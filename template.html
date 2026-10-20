@@ -36,9 +36,10 @@ h1 { font-size: 22px; margin: 8px 0 4px; }
 .seg button small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
 .seg button[aria-pressed="true"] { background: var(--card); box-shadow: var(--shadow); }
 
-.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.stat span { display: block; line-height: 1.25; }
 .stat { background: var(--card); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
-.stat b { font-size: 22px; display: block; font-variant-numeric: tabular-nums; }
+.stat b { font-size: 20px; display: block; font-variant-numeric: tabular-nums; }
 .stat span { color: var(--muted); font-size: 13px; }
 .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 8px; }
 .bar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
@@ -79,7 +80,12 @@ h1 { font-size: 22px; margin: 8px 0 4px; }
 .feedback.bad { color: var(--bad); }
 
 .dock { position: fixed; left: 0; right: 0; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%); padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); }
-.dock div { max-width: 680px; margin: 0 auto; }
+.dock div { max-width: 680px; margin: 0 auto; display: flex; gap: 8px; }
+.dock .ghost, .dock .primary { flex: 1; width: auto; }
+.mode.featured { border-color: var(--accent); }
+.mode.featured .ic { background: var(--accent); color: #fff; }
+.hint { color: var(--muted); font-size: 14px; margin-top: 14px; }
+div.opt { cursor: default; }
 .primary { width: 100%; border: 0; border-radius: 14px; padding: 15px; font-weight: 700; font-size: 16px; background: var(--accent); color: #fff; }
 .primary:disabled { background: var(--line); color: var(--muted); cursor: default; }
 
@@ -101,7 +107,7 @@ h1 { font-size: 22px; margin: 8px 0 4px; }
 </head>
 <body>
 <main class="wrap" id="app"></main>
-<div class="dock" id="dock" hidden><div><button class="primary" id="primary"></button></div></div>
+<div class="dock" id="dock" hidden><div><button class="ghost" id="secondary" hidden></button><button class="primary" id="primary"></button></div></div>
 <script>
 const DATA = /*DATA*/;
 const BLOCKS = { A: { name: 'Блок А', multi: false }, V: { name: 'Блок В', multi: true } };
@@ -118,9 +124,9 @@ const BY_ID = Object.fromEntries(ALL.map((q) => [q.id, q]));
 function loadStore() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (raw && typeof raw === 'object') return { last: raw.last || {}, pos: raw.pos || {}, scope: raw.scope || 'A', exam: raw.exam || 30 };
+    if (raw && typeof raw === 'object') return { last: raw.last || {}, pos: raw.pos || {}, known: raw.known || {}, scope: raw.scope || 'A', exam: raw.exam || 30 };
   } catch (e) { /* storage unavailable — work without it */ }
-  return { last: {}, pos: {}, scope: 'A', exam: 30 };
+  return { last: {}, pos: {}, known: {}, scope: 'A', exam: 30 };
 }
 let store = loadStore();
 function save(patch) {
@@ -144,13 +150,19 @@ function el(tag, props = {}, ...kids) {
   kids.flat().forEach((c) => c != null && node.append(c));
   return node;
 }
-function setDock(label, handler, disabled = false) {
+const secondary = document.getElementById('secondary');
+let onSecondary = null;
+function setDock(label, handler, disabled = false, second = null) {
   dock.hidden = !label;
   primary.textContent = label || '';
   primary.disabled = disabled;
   onPrimary = handler;
+  secondary.hidden = !second;
+  secondary.textContent = second ? second.label : '';
+  onSecondary = second ? second.handler : null;
 }
 primary.addEventListener('click', () => onPrimary && onPrimary());
+secondary.addEventListener('click', () => onSecondary && onSecondary());
 
 function scopeIds(scope) { return ALL.filter((q) => scope === 'AV' || q.block === scope).map((q) => q.id); }
 function shuffle(arr) {
@@ -172,6 +184,7 @@ function renderHome() {
   const ids = scopeIds(scope);
   const solved = ids.filter((id) => store.last[id] === 1).length;
   const wrong = ids.filter((id) => store.last[id] === 0);
+  const known = ids.filter((id) => store.known[id]).length;
   const pos = store.pos[scope] || 0;
   setDock(null);
 
@@ -185,10 +198,14 @@ function renderHome() {
     el('p', { class: 'sub', text: 'Безопасность жизнедеятельности — блоки А и В' }),
     el('div', { class: 'seg' }, segBtn('A', 'Блок А'), segBtn('V', 'Блок В'), segBtn('AV', 'Оба')),
     el('div', { class: 'stats' },
-      el('div', { class: 'stat' }, el('b', { text: `${solved} / ${ids.length}` }), el('span', { text: 'отвечено верно' }),
-        el('div', { class: 'bar' }, el('i', { style: `width:${(solved / ids.length) * 100}%` }))),
+      el('div', { class: 'stat' }, el('b', { text: String(known) }), el('span', { text: `выучено из ${ids.length}` }),
+        el('div', { class: 'bar' }, el('i', { style: `width:${(known / ids.length) * 100}%` }))),
+      el('div', { class: 'stat' }, el('b', { text: String(solved) }), el('span', { text: 'верно в тестах' })),
       el('div', { class: 'stat' }, el('b', { text: String(wrong.length) }), el('span', { text: 'ошибок на повторение' }))),
-    el('div', { class: 'label', text: 'Режим' }),
+    el('div', { class: 'label', text: 'Обучение' }),
+    el('div', { class: 'modes' },
+      learnMode(mode, ids)),
+    el('div', { class: 'label', text: 'Проверка' }),
     el('div', { class: 'modes' },
       mode('1→', 'По порядку', pos > 0 && pos < ids.length ? `продолжить с вопроса ${pos + 1}` : 'все вопросы подряд',
         () => startSession('order', pos > 0 && pos < ids.length ? ids.slice(pos) : ids, pos > 0 && pos < ids.length ? pos : 0)),
@@ -201,9 +218,78 @@ function renderHome() {
           'aria-pressed': String(store.exam === n), text: `${n} вопр.`, on: { click: () => { save({ exam: n }); renderHome(); } },
         }))))),
     el('button', { class: 'link', text: 'Сбросить прогресс', on: { click: () => {
-      if (confirm('Сбросить весь прогресс и список ошибок?')) { save({ last: {}, pos: {} }); renderHome(); }
+      if (confirm('Сбросить весь прогресс: выученное, ошибки и место «по порядку»?')) { save({ last: {}, pos: {}, known: {} }); renderHome(); }
     } } }),
   );
+  window.scrollTo(0, 0);
+}
+
+/* ---------- learn: flashcards in batches, then a check ---------- */
+const BATCH = 10;
+const RETRY_GAP = 3;
+
+function nextBatch(ids) { return ids.filter((id) => !store.known[id]).slice(0, BATCH); }
+
+function learnMode(mode, ids) {
+  const batch = nextBatch(ids);
+  const left = ids.filter((id) => !store.known[id]).length;
+  const desc = batch.length
+    ? `по ${BATCH} вопросов: вспомни → посмотри ответ → проверка. Осталось ${left}`
+    : 'всё выучено — можно сбросить прогресс и пройти заново';
+  const node = mode('★', 'Учить', desc, () => startLearn(batch), batch.length === 0);
+  node.classList.add('featured');
+  return node;
+}
+
+function startLearn(batch) {
+  if (!batch.length) return;
+  session = { mode: 'learn', batch, queue: [...batch], done: 0, scope: store.scope };
+  renderCard();
+}
+
+function renderCard() {
+  const s = session;
+  const q = BY_ID[s.queue[0]];
+  const opts = q.answers.map((t, j) => el('div', { class: 'opt' + (BLOCKS[q.block].multi ? ' multi' : '') },
+    el('span', { class: 'k', text: LETTERS[j] }), el('span', { text: t })));
+  const hint = el('p', { class: 'hint', text: 'Вспомните ответ, потом откройте его.' });
+
+  function reveal() {
+    q.correct.forEach((j) => opts[j].classList.add('ok'));
+    hint.textContent = 'Правильно выделено зелёным. Вы это знали?';
+    setDock('Знал', knew, false, { label: 'Не знал', handler: didntKnow });
+    s.keys = (e) => { if (e.key === '1') didntKnow(); if (e.key === '2' || e.key === 'Enter') { e.preventDefault(); knew(); } };
+  }
+  function knew() {
+    s.queue.shift();
+    s.done += 1;
+    advance();
+  }
+  function didntKnow() {
+    const [id, ...rest] = s.queue;
+    s.queue = [...rest.slice(0, RETRY_GAP), id, ...rest.slice(RETRY_GAP)];
+    advance();
+  }
+  function advance() {
+    if (s.queue.length) { renderCard(); return; }
+    const batch = s.batch;
+    startSession('learn-check', shuffle(batch));
+    session.batch = batch;
+  }
+  s.keys = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reveal(); } };
+
+  const multi = BLOCKS[q.block].multi;
+  app.replaceChildren(
+    el('div', { class: 'top' },
+      el('button', { class: 'back', text: '← Меню', on: { click: renderHome } }),
+      el('span', { class: 'count', text: `запомнено ${s.done} из ${s.batch.length}` })),
+    el('div', { class: 'progress' }, el('i', { style: `width:${(s.done / s.batch.length) * 100}%` })),
+    el('span', { class: 'tag', text: `Учим · ${BLOCKS[q.block].name} №${q.num}` + (multi ? ` · правильных ${q.correct.length}` : '') }),
+    el('p', { class: 'question', text: q.text }),
+    el('div', { class: 'opts' }, opts),
+    hint,
+  );
+  setDock('Показать ответ', reveal);
   window.scrollTo(0, 0);
 }
 
@@ -293,8 +379,20 @@ function renderResult() {
   const pct = Math.round((good / results.length) * 100);
   const mistakes = results.filter((r) => !r.ok);
   if (mode === 'order') save({ pos: { ...store.pos, [session.scope]: 0 } });
+  const isLearn = mode === 'learn-check';
+  if (isLearn) {
+    const learned = Object.fromEntries(results.filter((r) => r.ok).map((r) => [r.id, 1]));
+    save({ known: { ...store.known, ...learned } });
+  }
+  const upcoming = isLearn ? nextBatch(scopeIds(session.scope)) : [];
   session = null;
-  setDock('В меню', renderHome);
+  if (isLearn && mistakes.length) {
+    setDock(`Доучить ошибки (${mistakes.length})`, () => startLearn(mistakes.map((r) => r.id)), false, { label: 'В меню', handler: renderHome });
+  } else if (isLearn && upcoming.length) {
+    setDock('Следующие 10', () => startLearn(upcoming), false, { label: 'В меню', handler: renderHome });
+  } else {
+    setDock('В меню', renderHome);
+  }
 
   const review = mistakes.map((r) => {
     const q = BY_ID[r.id];
@@ -309,9 +407,11 @@ function renderResult() {
   });
 
   app.replaceChildren(
-    el('h1', { text: mode === 'exam' ? 'Экзамен окончен' : 'Готово' }),
-    el('div', { class: 'score' }, el('b', { text: `${pct}%` }), el('span', { text: `верно ${good} из ${results.length}` })),
-    ...(mistakes.length ? [el('div', { class: 'row' },
+    el('h1', { text: { exam: 'Экзамен окончен', 'learn-check': 'Проверка порции' }[mode] || 'Готово' }),
+    el('div', { class: 'score' }, el('b', { text: `${pct}%` }), el('span', { text: isLearn
+      ? `выучено ${good} из ${results.length}` + (mistakes.length ? ' — ошибки доучим ещё раз' : '')
+      : `верно ${good} из ${results.length}` })),
+    ...(mistakes.length && !isLearn ? [el('div', { class: 'row' },
       el('button', { class: 'ghost', text: `Прорешать ошибки этой попытки (${mistakes.length})`, on: { click: () => { startSession('errors', shuffle(mistakes.map((r) => r.id))); } } }))] : []),
     ...(mistakes.length ? [el('div', { class: 'label', text: 'Разбор ошибок' })] : []),
     ...review,
